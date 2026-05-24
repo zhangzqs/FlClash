@@ -48,8 +48,8 @@ jobs:
             "macos|macos-latest|arm64"
           )
 
-          # Generate JSON array
-          json="["
+          # Generate JSON include array
+          items="["
           first=true
           for entry in "${entries[@]}"; do
             IFS='|' read -r plat os a <<< "$entry"
@@ -62,19 +62,16 @@ jobs:
               if [ "$first" = true ]; then
                 first=false
               else
-                json+=","
+                items+=","
               fi
-              json+="{\"platform\":\"$plat\",\"os\":\"$os\",\"arch\":\"$a\"}"
+              items+="{\"platform\":\"$plat\",\"os\":\"$os\",\"arch\":\"$a\"}"
             fi
           done
-          json+="]"
+          items+="]"
 
-          # Use heredoc to safely output JSON with quotes
-          {
-            echo "matrix<<MATRIX_EOF"
-            echo "$json"
-            echo "MATRIX_EOF"
-          } >> "$GITHUB_OUTPUT"
+          # matrix needs {"include": [...]} format
+          matrix_json="{\"include\":$items}"
+          echo "matrix=$matrix_json" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
