@@ -43,7 +43,8 @@ app.*.map.json
 
 #AI generated
 CLAUDE.md
-/.claude
+/.claude/*
+!/.claude/skills/
 
 
 # Android Studio will place build artifacts here
