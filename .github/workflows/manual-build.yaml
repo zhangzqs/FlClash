@@ -1,0 +1,123 @@
+name: manual-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Target platform'
+        required: true
+        type: choice
+        options:
+          - android
+          - windows
+          - linux
+          - macos
+          - all
+        default: android
+      arch:
+        description: 'Target architecture (for android/linux)'
+        required: false
+        type: choice
+        options:
+          - amd64
+          - arm64
+          - arm
+        default: amd64
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+    steps:
+      - id: generate
+        shell: bash
+        run: |
+          PLATFORM="${{ inputs.platform }}"
+          ARCH="${{ inputs.arch }}"
+
+          # All entries as a flat list: platform|os|arch
+          entries=(
+            "android|ubuntu-latest|arm"
+            "android|ubuntu-latest|arm64"
+            "android|ubuntu-latest|amd64"
+            "windows|windows-2022|amd64"
+            "linux|ubuntu-22.04|amd64"
+            "linux|ubuntu-24.04-arm|arm64"
+            "macos|macos-15-intel|amd64"
+            "macos|macos-latest|arm64"
+          )
+
+          # Generate JSON array
+          json="["
+          first=true
+          for entry in "${entries[@]}"; do
+            IFS='|' read -r plat os a <<< "$entry"
+            if [ "$PLATFORM" = "all" ] || [ "$plat" = "$PLATFORM" ]; then
+              if [[ "$PLATFORM" != "all" && ( "$plat" = "android" || "$plat" = "linux" ) ]]; then
+                if [ "$a" != "$ARCH" ]; then
+                  continue
+                fi
+              fi
+              if [ "$first" = true ]; then
+                first=false
+              else
+                json+=","
+              fi
+              json+="{\"platform\":\"$plat\",\"os\":\"$os\",\"arch\":\"$a\"}"
+            fi
+          done
+          json+="]"
+
+          # Escape newlines for GITHUB_OUTPUT (single line)
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.0'
+          cache-dependency-path: |
+            core/go.sum
+
+      - name: Setup Flutter
+        if: ${{ !(startsWith(matrix.os, 'windows-11-arm') || startsWith(matrix.os, 'ubuntu-24.04-arm')) }}
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.35.7
+          cache: true
+
+      - name: Setup Flutter With Other
+        if: startsWith(matrix.os, 'windows-11-arm') || startsWith(matrix.os, 'ubuntu-24.04-arm')
+        uses: subosito/flutter-action@v2
+        with:
+          channel: master
+          flutter-version: 3.35.7
+          cache: true
+
+      - name: Get Flutter Dependency
+        run: |
+          flutter --version
+          flutter pub get
+
+      - name: Build
+        run: dart setup.dart ${{ matrix.platform }} --arch ${{ matrix.arch }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ./dist
+          overwrite: true
