@@ -69,8 +69,12 @@ jobs:
           done
           json+="]"
 
-          # Escape newlines for GITHUB_OUTPUT (single line)
-          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+          # Use heredoc to safely output JSON with quotes
+          {
+            echo "matrix<<MATRIX_EOF"
+            echo "$json"
+            echo "MATRIX_EOF"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
